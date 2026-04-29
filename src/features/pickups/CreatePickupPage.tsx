@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -10,6 +10,7 @@ import { FormField } from '../../components/ui/FormField'
 import { Button } from '../../components/ui/Button'
 import { toast } from '../../lib/toastStore'
 import { LocationPickerMap } from '../../components/map/LocationPickerMap'
+import { forwardGeocode, reverseGeocode, type GeocodingResult } from '../../lib/geocoding'
 
 function toLocalDatetimeValue(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -20,11 +21,17 @@ export function CreatePickupPage() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const qc = useQueryClient()
+
   const [imageFile, setImageFile] = useState<File | undefined>()
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [locating, setLocating] = useState(false)
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null)
+  const [suggestions, setSuggestions] = useState<GeocodingResult[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const reverseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const skipNextReverse = useRef(false)
 
   const now = new Date()
   const later = new Date(now.getTime() + 24 * 60 * 60 * 1000)
@@ -41,10 +48,54 @@ export function CreatePickupPage() {
 
   const lat = watch('latitude')
   const lon = watch('longitude')
+  const addressValue = watch('address')
 
+  // Forward geocoding: address field → suggestions dropdown
+  useEffect(() => {
+    if (!addressValue || addressValue.length < 3) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
+    }
+    const timer = setTimeout(async () => {
+      setGeocoding(true)
+      const results = await forwardGeocode(addressValue)
+      setSuggestions(results)
+      setShowSuggestions(results.length > 0)
+      setGeocoding(false)
+    }, 600)
+    return () => clearTimeout(timer)
+  }, [addressValue])
+
+  function selectSuggestion(result: GeocodingResult) {
+    skipNextReverse.current = true
+    setValue('address', result.displayName, { shouldValidate: true })
+    setValue('latitude', result.lat, { shouldValidate: true })
+    setValue('longitude', result.lon, { shouldValidate: true })
+    setFlyTarget([result.lat, result.lon])
+    setShowSuggestions(false)
+    setSuggestions([])
+  }
+
+  // Reverse geocoding: map click/drag → address field
   function handleMapChange(newLat: number, newLon: number) {
     setValue('latitude', newLat, { shouldValidate: true })
     setValue('longitude', newLon, { shouldValidate: true })
+
+    if (skipNextReverse.current) {
+      skipNextReverse.current = false
+      return
+    }
+
+    if (reverseTimer.current) clearTimeout(reverseTimer.current)
+    reverseTimer.current = setTimeout(async () => {
+      const address = await reverseGeocode(newLat, newLon)
+      if (address) {
+        setValue('address', address, { shouldValidate: true })
+        setSuggestions([])
+        setShowSuggestions(false)
+      }
+    }, 600)
   }
 
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -57,12 +108,15 @@ export function CreatePickupPage() {
   function locateMe() {
     setLocating(true)
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const { latitude, longitude } = pos.coords
+        skipNextReverse.current = true
         setValue('latitude', latitude, { shouldValidate: true })
         setValue('longitude', longitude, { shouldValidate: true })
         setFlyTarget([latitude, longitude])
         setLocating(false)
+        const address = await reverseGeocode(latitude, longitude)
+        if (address) setValue('address', address, { shouldValidate: true })
       },
       () => setLocating(false),
     )
@@ -101,9 +155,41 @@ export function CreatePickupPage() {
           </FormField>
         </div>
 
-        <FormField label="Adress" error={errors.address?.message}>
-          <input type="text" {...register('address')} className="input" placeholder="Gatuadress, stad" />
-        </FormField>
+        {/* Address with suggestions */}
+        <div className="relative">
+          <FormField label="Adress" error={errors.address?.message}>
+            <div className="relative">
+              <input
+                type="text"
+                {...register('address')}
+                className="input pr-8"
+                placeholder="Sök adress eller klicka på kartan"
+                autoComplete="off"
+                onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              />
+              {geocoding && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+              )}
+            </div>
+          </FormField>
+
+          {showSuggestions && suggestions.length > 0 && (
+            <ul className="absolute z-50 left-0 right-0 mt-1 bg-white rounded-xl shadow-lg ring-1 ring-gray-100 overflow-hidden">
+              {suggestions.map((s, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    onMouseDown={() => selectSuggestion(s)}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
+                  >
+                    {s.displayName}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
         {/* Map location picker */}
         <div>
@@ -122,7 +208,7 @@ export function CreatePickupPage() {
             />
           </div>
           <p className="mt-1.5 text-xs text-gray-400">
-            Klicka på kartan eller dra nålen för att välja plats · {lat?.toFixed(5)}, {lon?.toFixed(5)}
+            Klicka på kartan eller dra nålen för att justera platsen
           </p>
           {(errors.latitude || errors.longitude) && (
             <p className="text-xs text-red-500 mt-1">⚠ Välj en giltig plats</p>

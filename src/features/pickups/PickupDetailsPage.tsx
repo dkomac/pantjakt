@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button'
 import { Spinner } from '../../components/ui/Spinner'
 import { formatSEK, formatDate } from '../../lib/formatters'
 import { toast } from '../../lib/toastStore'
+import { MiniMap } from '../../components/map/MiniMap'
 
 export function PickupDetailsPage() {
   const { id } = useParams<{ id: string }>()
@@ -98,6 +99,11 @@ export function PickupDetailsPage() {
             {pickup.collector && (
               <Stat label="Insamlare" value={pickup.collector.display_name ?? pickup.collector.email ?? '–'} />
             )}
+          </div>
+
+          {/* Mini-map */}
+          <div className="mb-5 rounded-2xl overflow-hidden h-44 ring-1 ring-gray-100">
+            <MiniMap lat={pickup.latitude} lon={pickup.longitude} />
           </div>
 
           <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-100">
