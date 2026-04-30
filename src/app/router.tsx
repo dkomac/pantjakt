@@ -8,35 +8,21 @@ import { CreatePickupPage } from '../features/pickups/CreatePickupPage'
 import { MyPickupsPage } from '../features/pickups/MyPickupsPage'
 import { MapPage } from '../features/map/MapPage'
 import { ProtectedRoute } from '../components/layout/ProtectedRoute'
+import { ROUTES } from '../lib/routes'
 
 export const router = createBrowserRouter([
   {
-    path: '/',
+    path: ROUTES.home,
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/pickups" replace /> },
-      { path: 'login', element: <LoginPage /> },
-      { path: 'register', element: <RegisterPage /> },
-      {
-        path: 'pickups',
-        element: <ProtectedRoute><PickupListPage /></ProtectedRoute>,
-      },
-      {
-        path: 'pickups/:id',
-        element: <ProtectedRoute><PickupDetailsPage /></ProtectedRoute>,
-      },
-      {
-        path: 'create',
-        element: <ProtectedRoute><CreatePickupPage /></ProtectedRoute>,
-      },
-      {
-        path: 'my-pickups',
-        element: <ProtectedRoute><MyPickupsPage /></ProtectedRoute>,
-      },
-      {
-        path: 'map',
-        element: <ProtectedRoute><MapPage /></ProtectedRoute>,
-      },
+      { index: true, element: <Navigate to={ROUTES.pickups} replace /> },
+      { path: 'login',      element: <LoginPage /> },
+      { path: 'register',   element: <RegisterPage /> },
+      { path: 'pickups',    element: <ProtectedRoute><PickupListPage /></ProtectedRoute> },
+      { path: 'pickups/:id',element: <ProtectedRoute><PickupDetailsPage /></ProtectedRoute> },
+      { path: 'create',     element: <ProtectedRoute><CreatePickupPage /></ProtectedRoute> },
+      { path: 'my-pickups', element: <ProtectedRoute><MyPickupsPage /></ProtectedRoute> },
+      { path: 'map',        element: <ProtectedRoute><MapPage /></ProtectedRoute> },
     ],
   },
 ])

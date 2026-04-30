@@ -11,11 +11,10 @@ import { Button } from '../../components/ui/Button'
 import { toast } from '../../lib/toastStore'
 import { LocationPickerMap } from '../../components/map/LocationPickerMap'
 import { forwardGeocode, reverseGeocode, type GeocodingResult } from '../../lib/geocoding'
-
-function toLocalDatetimeValue(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
+import { toLocalDatetimeValue, ONE_DAY_MS } from '../../lib/dateUtils'
+import { useGeolocation } from '../../hooks/useGeolocation'
+import { ROUTES } from '../../lib/routes'
+import { QUERY_KEYS } from './usePickupQueries'
 
 export function CreatePickupPage() {
   const { user } = useAuth()
@@ -24,7 +23,6 @@ export function CreatePickupPage() {
 
   const [imageFile, setImageFile] = useState<File | undefined>()
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [locating, setLocating] = useState(false)
   const [flyTarget, setFlyTarget] = useState<[number, number] | null>(null)
   const [suggestions, setSuggestions] = useState<GeocodingResult[]>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -33,8 +31,10 @@ export function CreatePickupPage() {
   const reverseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipNextReverse = useRef(false)
 
+  const { loading: locating, locate } = useGeolocation()
+
   const now = new Date()
-  const later = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  const later = new Date(now.getTime() + ONE_DAY_MS)
 
   const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } = useForm<CreatePickupFormData>({
     resolver: zodResolver(createPickupSchema),
@@ -50,7 +50,12 @@ export function CreatePickupPage() {
   const lon = watch('longitude')
   const addressValue = watch('address')
 
-  // Forward geocoding: address field → suggestions dropdown
+  useEffect(() => {
+    return () => {
+      if (reverseTimer.current) clearTimeout(reverseTimer.current)
+    }
+  }, [])
+
   useEffect(() => {
     if (!addressValue || addressValue.length < 3) {
       setSuggestions([])
@@ -77,7 +82,6 @@ export function CreatePickupPage() {
     setSuggestions([])
   }
 
-  // Reverse geocoding: map click/drag → address field
   function handleMapChange(newLat: number, newLon: number) {
     setValue('latitude', newLat, { shouldValidate: true })
     setValue('longitude', newLon, { shouldValidate: true })
@@ -98,6 +102,18 @@ export function CreatePickupPage() {
     }, 600)
   }
 
+  function locateMe() {
+    locate(async (coords) => {
+      const { latitude, longitude } = coords
+      skipNextReverse.current = true
+      setValue('latitude', latitude, { shouldValidate: true })
+      setValue('longitude', longitude, { shouldValidate: true })
+      setFlyTarget([latitude, longitude])
+      const address = await reverseGeocode(latitude, longitude)
+      if (address) setValue('address', address, { shouldValidate: true })
+    })
+  }
+
   function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -105,29 +121,12 @@ export function CreatePickupPage() {
     setImagePreview(URL.createObjectURL(file))
   }
 
-  function locateMe() {
-    setLocating(true)
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const { latitude, longitude } = pos.coords
-        skipNextReverse.current = true
-        setValue('latitude', latitude, { shouldValidate: true })
-        setValue('longitude', longitude, { shouldValidate: true })
-        setFlyTarget([latitude, longitude])
-        setLocating(false)
-        const address = await reverseGeocode(latitude, longitude)
-        if (address) setValue('address', address, { shouldValidate: true })
-      },
-      () => setLocating(false),
-    )
-  }
-
   const mutation = useMutation({
     mutationFn: (data: CreatePickupFormData) => createPickup(data, user!.id, imageFile),
     onSuccess: (pickup) => {
-      qc.invalidateQueries({ queryKey: ['pickups'] })
+      qc.invalidateQueries({ queryKey: QUERY_KEYS.available })
       toast.success('Hämtning publicerad!')
-      navigate(`/pickups/${pickup.id}`)
+      navigate(ROUTES.pickup(pickup.id))
     },
     onError: (err: Error) => toast.error(err.message ?? 'Något gick fel.'),
   })
@@ -155,7 +154,6 @@ export function CreatePickupPage() {
           </FormField>
         </div>
 
-        {/* Address with suggestions */}
         <div className="relative">
           <FormField label="Adress" error={errors.address?.message}>
             <div className="relative">
@@ -191,7 +189,6 @@ export function CreatePickupPage() {
           )}
         </div>
 
-        {/* Map location picker */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-sm font-medium text-gray-700">Upphämtningsplats</p>

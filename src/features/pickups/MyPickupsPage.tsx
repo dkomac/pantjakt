@@ -1,17 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
-import { fetchMyPickups } from './pickupService'
 import { useAuth } from '../auth/useAuth'
+import { useMyPickups } from './usePickupQueries'
 import { PickupCard } from './components/PickupCard'
 import { Spinner } from '../../components/ui/Spinner'
 
 export function MyPickupsPage() {
   const { user } = useAuth()
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['my-pickups', user?.id],
-    queryFn: () => fetchMyPickups(user!.id),
-    enabled: !!user,
-  })
+  const { data, isLoading, error } = useMyPickups(user?.id)
 
   if (isLoading) return <Spinner className="mt-20" />
   if (error) return <p className="text-red-600 p-4">Kunde inte ladda dina hämtningar.</p>

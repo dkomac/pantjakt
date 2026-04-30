@@ -1,48 +1,22 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchPickupById, claimPickup, completePickup, cancelPickup } from './pickupService'
 import { useAuth } from '../auth/useAuth'
 import { StatusBadge } from '../../components/ui/Badge'
 import { Button } from '../../components/ui/Button'
 import { Spinner } from '../../components/ui/Spinner'
+import { Stat } from '../../components/ui/Stat'
 import { formatSEK, formatDate } from '../../lib/formatters'
 import { toast } from '../../lib/toastStore'
 import { MiniMap } from '../../components/map/MiniMap'
+import { usePickup, usePickupMutations } from './usePickupQueries'
+import { ROUTES } from '../../lib/routes'
 
 export function PickupDetailsPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const navigate = useNavigate()
-  const qc = useQueryClient()
 
-  const { data: pickup, isLoading, error } = useQuery({
-    queryKey: ['pickup', id],
-    queryFn: () => fetchPickupById(id!),
-    enabled: !!id,
-  })
-
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['pickup', id] })
-    qc.invalidateQueries({ queryKey: ['pickups'] })
-  }
-
-  const claimMutation = useMutation({
-    mutationFn: () => claimPickup(id!, user!.id),
-    onSuccess: () => { invalidate(); toast.success('Hämtning bokad!') },
-    onError: () => toast.error('Kunde inte boka hämtningen.'),
-  })
-
-  const completeMutation = useMutation({
-    mutationFn: () => completePickup(id!),
-    onSuccess: () => { invalidate(); toast.success('Markerad som hämtad!') },
-    onError: () => toast.error('Något gick fel.'),
-  })
-
-  const cancelMutation = useMutation({
-    mutationFn: () => cancelPickup(id!),
-    onSuccess: () => { invalidate(); toast.info('Hämtning avbruten.'); navigate('/pickups') },
-    onError: () => toast.error('Kunde inte avbryta.'),
-  })
+  const { data: pickup, isLoading, error } = usePickup(id)
+  const { claim, complete, cancel } = usePickupMutations(id)
 
   if (isLoading) return <Spinner className="mt-20" />
   if (error || !pickup) return (
@@ -101,39 +75,40 @@ export function PickupDetailsPage() {
             )}
           </div>
 
-          {/* Mini-map */}
           <div className="mb-5 rounded-2xl overflow-hidden h-44 ring-1 ring-gray-100">
             <MiniMap lat={pickup.latitude} lon={pickup.longitude} />
           </div>
 
           <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-100">
             {pickup.status === 'available' && !isDonor && (
-              <Button onClick={() => claimMutation.mutate()} loading={claimMutation.isPending}>
+              <Button onClick={() => claim.mutate(user!.id)} loading={claim.isPending}>
                 Boka hämtning
               </Button>
             )}
             {pickup.status === 'claimed' && isCollector && (
-              <Button onClick={() => completeMutation.mutate()} loading={completeMutation.isPending}>
+              <Button onClick={() => complete.mutate()} loading={complete.isPending}>
                 Markera som hämtad
               </Button>
             )}
             {isDonor && (pickup.status === 'available' || pickup.status === 'claimed') && (
-              <Button variant="danger" onClick={() => cancelMutation.mutate()} loading={cancelMutation.isPending}>
+              <Button
+                variant="danger"
+                loading={cancel.isPending}
+                onClick={() =>
+                  cancel.mutate(undefined, {
+                    onSuccess: () => {
+                      toast.info('Hämtning avbruten.')
+                      navigate(ROUTES.pickups)
+                    },
+                  })
+                }
+              >
                 Avbryt hämtning
               </Button>
             )}
           </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-function Stat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
-  return (
-    <div className="rounded-xl bg-gray-50 px-3.5 py-3">
-      <p className="text-xs text-gray-400 mb-0.5">{label}</p>
-      <p className={`text-sm font-semibold ${highlight ? 'text-emerald-600' : 'text-gray-800'}`}>{value}</p>
     </div>
   )
 }

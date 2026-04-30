@@ -1,23 +1,18 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
-import { fetchAvailablePickups } from '../pickups/pickupService'
 import { PickupMap } from './PickupMap'
 import { StatusBadge } from '../../components/ui/Badge'
 import { Spinner } from '../../components/ui/Spinner'
 import { formatSEK, formatDateShort } from '../../lib/formatters'
+import { useAvailablePickups } from '../pickups/usePickupQueries'
+import { ROUTES } from '../../lib/routes'
 
 export function MapPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
-
-  const { data: pickups, isLoading, error } = useQuery({
-    queryKey: ['pickups', 'available'],
-    queryFn: fetchAvailablePickups,
-  })
+  const { data: pickups, isLoading, error } = useAvailablePickups()
 
   return (
     <div className="relative" style={{ height: 'calc(100vh - 56px)' }}>
-      {/* Full-bleed map */}
       {isLoading ? (
         <div className="h-full flex items-center justify-center bg-slate-50">
           <Spinner />
@@ -30,7 +25,6 @@ export function MapPage() {
         <PickupMap pickups={pickups ?? []} />
       )}
 
-      {/* Floating sidebar */}
       <div
         className={`absolute top-4 left-4 bottom-4 z-[1000] flex flex-col transition-all duration-300 ${
           sidebarOpen ? 'w-72' : 'w-10'
@@ -54,7 +48,7 @@ export function MapPage() {
               {(pickups ?? []).map((p) => (
                 <Link
                   key={p.id}
-                  to={`/pickups/${p.id}`}
+                  to={ROUTES.pickup(p.id)}
                   className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
                 >
                   {p.image_url ? (

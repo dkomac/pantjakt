@@ -1,21 +1,9 @@
 import { useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, ZoomControl, useMapEvents, useMap } from 'react-leaflet'
-import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { createPinIcon } from '../../lib/leafletIcons'
 
-const pinIcon = L.divIcon({
-  className: '',
-  html: `<div style="
-    width: 22px;
-    height: 22px;
-    background: #10b981;
-    border: 3px solid white;
-    border-radius: 50%;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-  "></div>`,
-  iconAnchor: [11, 11],
-  iconSize: [22, 22],
-})
+const pinIcon = createPinIcon({ size: 22 })
 
 interface Props {
   lat: number

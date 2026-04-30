@@ -1,42 +1,36 @@
-import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useEffect } from 'react'
 import { Link as RouterLink } from 'react-router-dom'
-import { fetchAvailablePickups } from './pickupService'
 import { PickupCard } from './components/PickupCard'
 import { Spinner } from '../../components/ui/Spinner'
 import { haversineKm } from '../../lib/geo'
+import { useAvailablePickups } from './usePickupQueries'
+import { useGeolocation } from '../../hooks/useGeolocation'
+import { ROUTES } from '../../lib/routes'
 import type { SortOption } from './pickupTypes'
 import type { Pickup } from '../../lib/database.types'
 
 export function PickupListPage() {
   const [sort, setSort] = useState<SortOption>('newest')
-  const [userPos, setUserPos] = useState<GeolocationCoordinates | null>(null)
+  const { data: pickups, isLoading, error } = useAvailablePickups()
+  const { coords: userPos, locate } = useGeolocation()
 
-  const { data: pickups, isLoading, error } = useQuery({
-    queryKey: ['pickups', 'available'],
-    queryFn: fetchAvailablePickups,
-  })
+  useEffect(() => { locate() }, [locate])
 
-  useEffect(() => {
-    navigator.geolocation?.getCurrentPosition((pos) => setUserPos(pos.coords))
-  }, [])
-
-  function sortedPickups(list: Pickup[]): Pickup[] {
+  const sorted = useMemo(() => {
+    if (!pickups) return []
     switch (sort) {
       case 'value':
-        return [...list].sort((a, b) => b.estimated_value - a.estimated_value)
+        return [...pickups].sort((a, b) => b.estimated_value - a.estimated_value)
       case 'distance':
-        if (!userPos) return list
-        return [...list].sort((a, b) =>
+        if (!userPos) return pickups
+        return [...pickups].sort((a: Pickup, b: Pickup) =>
           haversineKm(userPos.latitude, userPos.longitude, a.latitude, a.longitude) -
           haversineKm(userPos.latitude, userPos.longitude, b.latitude, b.longitude),
         )
       default:
-        return [...list].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        return [...pickups].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     }
-  }
-
-  const sorted = pickups ? sortedPickups(pickups) : []
+  }, [pickups, sort, userPos])
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
@@ -76,7 +70,7 @@ export function PickupListPage() {
             Var den första att lägga ut pant i ditt område!
           </p>
           <RouterLink
-            to="/create"
+            to={ROUTES.create}
             className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 transition-colors"
           >
             + Lägg ut en hämtning
